@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4 v Vrsto - Razširljiva Igra</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>4 v Vrsto</h1>
+        
+        <div class="game-mode-select" id="modeSelect">
+            <p>Izberi način igre:</p>
+            <button class="mode-btn" id="pvpBtn">👥 Igralec proti Igralcu</button>
+            <button class="mode-btn" id="pvcBtn">🤖 Igralec proti Računalniku</button>
+            <button class="mode-btn" id="aiaiBtn">🤖 Računalnik proti Računalniku</button>
+        </div>
+
+        <div class="difficulty-select" id="difficultySelect" style="display:none;">
+            <p>Izberi težavnost:</p>
+            <button class="mode-btn">🟢 Lahka</button>
+            <button class="mode-btn">🟡 Srednja</button>
+            <button class="mode-btn">🔴 Težka</button>
+            <button class="mode-btn">⚡ Naraščajoča</button>
+            <button class="mode-btn back-btn">← Nazaj</button>
+        </div>
+
+        <div class="game-container" id="gameContainer" style="display:none;">
+            <div class="info">
+                <div class="player-info">
+                    <span id="currentPlayer">Igralec: <span class="player-o">O</span></span>
+                </div>
+                <div class="stats">
+                    <span>Polje: <span id="boardSize">5x5</span></span>
+                    <span id="difficultyDisplay" style="margin-left: 20px;"></span>
+                </div>
+            </div>
+            
+            <div class="score-board">
+                <div class="score-item">
+                    <span class="score-label">O:</span>
+                    <span class="score-value player-o" id="scoreO">0</span>
+                </div>
+                <div class="score-divider">|</div>
+                <div class="score-item">
+                    <span class="score-label">X:</span>
+                    <span class="score-value player-x" id="scoreX">0</span>
+                </div>
+            </div>
+            
+            <div class="game-board" id="gameBoard"></div>
+            
+            <div class="ai-comment" id="aiComment" style="display:none;"></div>
+            
+            <div class="controls">
+                <button id="resetBtn">Nova Igra</button>
+                <button id="undoBtn" disabled>Razveljavi</button>
+                <button id="menuBtn">Meni</button>
+            </div>
+            
+            <div id="message" class="message"></div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
