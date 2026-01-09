@@ -113,7 +113,7 @@ All modes use the **same core rules and mechanics**.
 - Improve performance for large boards
 - Mobile UI
 - Sound effects
-- EN Language support
+- full EN and SI Language support
 - Share game via URL/seed (play with others)
 ---
 
