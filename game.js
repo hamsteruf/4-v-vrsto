@@ -1,105 +1,114 @@
 // Glavna igra
-class FourInARow {
+class ŠtiriVVrsto {
     constructor() {
-        this.boardSize = 5;
-        this.board = [];
-        this.currentPlayer = 'o'; // 'o' ali 'x'
-        this.blocked = []; // Zapolnjena polja
-        this.gameOver = false;
-        this.history = [];
-        this.winningCells = [];
-        this.rotationAngle = 0;
-        this.scores = { o: 0, x: 0 };
-        this.aiEnabled = false;
-        this.aiPlayer = 'x';
-        this.aiDifficulty = 'medium';
-        this.aiVsAi = false; // Računalnik protiv računalnika
-        this.dynamicDifficulty = false; // Naraščajoča težavnost
-        this.movesCount = 0; // Šteje poteze za naraščajočo težavnost
-        this.noWinUntilMove = 0; // Zadrži zmago za prvi 2 potezi po razširitvi
-        this.oldAreaBounds = { minRow: 0, maxRow: 4, minCol: 0, maxCol: 4 }; // Stari 5x5 del
+        this.velikostPolja = 5;
+        this.plošča = [];
+        this.trenutniIgralec = 'o'; // 'o' ali 'x'
+        this.zaprte = []; // Zapolnjena polja
+        this.konecIgre = false;
+        this.zgodovina = [];
+        this.zmagovalnaPolja = [];
+        this.kotAlfabete = 0;
+        this.rezultati = { o: 0, x: 0 };
+        this.racunalnikOmogočen = false;
+        this.racunalnikIgralec = 'x';
+        this.racunalnikTežavnost = 'težka'; // Vedno le najboljši algoritm
+        this.racunalnikProtiRacunalniku = false;
+        this.dinamičnaTežavnost = false;
+        this.številoPotez = 0;
+        this.zadrževanjePobede = 0;
+        this.stareMeje = { minVrsta: 0, maxVrsta: 4, minStolpec: 0, maxStolpec: 4 };
+        this.razlogZaRazširitev = null;
+        this.globinaPredgleda = 3; // Vedno globina 3 za najboljši algoritm
+        this.transposicijskaTabela = new Map();
+        this.zgodovinaHevristike = {}; // Pamti česte dobre poteze
+        this.ubijačnePoteze = {}; // Killer Move Heuristic - poteze koje su dobre u različitim granama
+        this.simetrija = {}; // Memorija simetričnih pozicija
+        this.vrednostiPolj = {}; // Vrednosti polja na osnovu sledećih 5 mogućih poteza
         
-        this.initBoard();
+        this.inicializacijaPolja();
     }
 
-    initBoard() {
-        this.board = Array(this.boardSize).fill(null).map(() => 
-            Array(this.boardSize).fill(null)
+    inicializacijaPolja() {
+        this.plošča = Array(this.velikostPolja).fill(null).map(() => 
+            Array(this.velikostPolja).fill(null)
         );
-        this.blocked = Array(this.boardSize).fill(null).map(() => 
-            Array(this.boardSize).fill(false)
+        this.zaprte = Array(this.velikostPolja).fill(null).map(() => 
+            Array(this.velikostPolja).fill(false)
         );
-        this.renderBoard();
+        this.rišiPloščo();
     }
 
-    makeMove(row, col) {
-        if (this.gameOver || !this.isValidMove(row, col)) return false;
+    izvediPotezo(vrsta, stolpec) {
+        if (this.konecIgre || !this.jeVeljavnaPoteza(vrsta, stolpec)) return false;
 
         // Uporabi gravitacijo - polje pada navzdol
-        row = this.applyGravity(row, col);
-        if (row === -1) return false; // Stolpec je poln
+        vrsta = this.uporabiGravitacijo(vrsta, stolpec);
+        if (vrsta === -1) return false; // Stolpec je poln
 
         // Štej poteze za naraščajočo težavnost
-        this.movesCount++;
+        this.številoPotez++;
 
         // Shrani v zgodovino
-        this.history.push({
-            board: this.board.map(r => [...r]),
-            blocked: this.blocked.map(r => [...r]),
-            player: this.currentPlayer,
-            boardSize: this.boardSize,
-            rotationAngle: this.rotationAngle,
-            scores: { ...this.scores },
-            winningCells: [...this.winningCells]
+        this.zgodovina.push({
+            plošča: this.plošča.map(r => [...r]),
+            zaprte: this.zaprte.map(r => [...r]),
+            igralec: this.trenutniIgralec,
+            velikostPolja: this.velikostPolja,
+            kotAlfabete: this.kotAlfabete,
+            rezultati: { ...this.rezultati },
+            zmagovalnaPolja: [...this.zmagovalnaPolja]
         });
 
         // Naredi potezo
-        this.board[row][col] = this.currentPlayer;
+        this.plošča[vrsta][stolpec] = this.trenutniIgralec;
 
         // Preveri zmago (če se ne nahajamo v zadrževalnem obdobju)
-        let winResult = null;
-        if (this.noWinUntilMove > 0) {
+        let rezultatZmage = null;
+        if (this.zadrževanjePobede > 0) {
             // V zadrževalnem obdobju - preveri zmago in prepreči jo
-            winResult = this.checkWin(row, col);
-            if (winResult) {
+            rezultatZmage = this.preveriZmago(vrsta, stolpec);
+            if (rezultatZmage) {
                 // Odvzemi potezo - to ne sme biti dovolj
-                this.board[row][col] = null;
-                this.showMessage(`Ta poteza bi dala zmago, kar ni dovoljeno! Poskusi drugače.`, 'error');
-                this.history.pop(); // Odstrani iz zgodovine
+                this.plošča[vrsta][stolpec] = null;
+                this.prikaziSporočilo(`Ta poteza bi dala zmago, kar ni dovoljeno! Poskusi drugače.`, 'napaka');
+                this.zgodovina.pop(); // Odstrani iz zgodovine
                 return false;
             }
-            this.noWinUntilMove--;
+            this.zadrževanjePobede--;
         } else {
-            winResult = this.checkWin(row, col);
+            rezultatZmage = this.preveriZmago(vrsta, stolpec);
         }
         
-        if (winResult) {
-            this.winningCells = winResult.cells;
-            this.scores[this.currentPlayer]++;
+        if (rezultatZmage) {
+            this.zmagovalnaPolja = rezultatZmage.polja;
+            this.rezultati[this.trenutniIgralec]++;
             
             // Zapolni zmagovalna polja
-            winResult.cells.forEach(cell => {
-                this.blocked[cell.r][cell.c] = true;
+            rezultatZmage.polja.forEach(polje => {
+                this.zaprte[polje.v][polje.s] = true;
             });
             
-            this.showMessage(`Igralec ${this.currentPlayer.toUpperCase()} je zmaga! +1 točka`, 'win');
+            this.prikaziSporočilo(`Igralec ${this.trenutniIgralec.toUpperCase()} dobil točko!`, 'zmaga');
+            this.razlogZaRazširitev = 'zmaga';
             
-            // Preveri ali je polje polno - samo razširi, ne obrni
-            if (this.isBoardFull()) {
-                setTimeout(() => this.expandBoard(false, false), 2000);
+            // Preveri ali je polje polno
+            if (this.jePoljePolno()) {
+                console.log('🏁 Polje je polno po zmagi - razširja se BREZ rotacije');
+                setTimeout(() => this.razširiPolje(), 2000);
             } else {
-                // Igra se nadaljuje, zamenjaj igralca
-                this.currentPlayer = this.currentPlayer === 'o' ? 'x' : 'o';
-                this.renderBoard();
+                // Igra se nadaljuje
+                this.trenutniIgralec = this.trenutniIgralec === 'o' ? 'x' : 'o';
+                this.rišiPloščo();
                 
                 // AI poteza
-                if (this.aiEnabled) {
-                    if (this.aiVsAi) {
-                        const delay = 100;
-                        setTimeout(() => this.makeAIMove(), delay);
-                    } else if (this.currentPlayer === this.aiPlayer) {
-                        const delay = 300;
-                        setTimeout(() => this.makeAIMove(), delay);
+                if (this.racunalnikOmogočen) {
+                    if (this.racunalnikProtiRacunalniku) {
+                        const zamik = 100;
+                        setTimeout(() => this.izvediAIPotezo(), zamik);
+                    } else if (this.trenutniIgralec === this.racunalnikIgralec) {
+                        const zamik = 300;
+                        setTimeout(() => this.izvediAIPotezo(), zamik);
                     }
                 }
             }
@@ -107,122 +116,133 @@ class FourInARow {
         }
 
         // Preveri izenačenje
-        if (this.isBoardFull()) {
-            this.showMessage('Izenačenje! Polje se razširja in obrne...', 'tie');
-            setTimeout(() => this.expandBoard(true, true), 1500);
+        if (this.jePoljePolno()) {
+            console.log('🔄 Polje je polno brez zmage - provjeravram da li je izenačenje');
+            const jeIzenačenje = this.rezultati.o === this.rezultati.x;
+            if (jeIzenačenje) {
+                this.prikaziSporočilo('Izenačenje! Polje se razširja in obrne...', 'tie');
+            } else {
+                this.prikaziSporočilo('Polje je polno - razširja se!', 'tie');
+            }
+            this.razlogZaRazširitev = 'tie';
+            setTimeout(() => this.razširiPolje(), 1500);
             return true;
         }
 
         // Zamenjaj igralca
-        this.currentPlayer = this.currentPlayer === 'o' ? 'x' : 'o';
-        this.renderBoard();
+        this.trenutniIgralec = this.trenutniIgralec === 'o' ? 'x' : 'o';
+        this.rišiPloščo();
         
         // AI poteza
-        if (this.aiEnabled) {
-            if (this.aiVsAi) {
+        if (this.racunalnikOmogočen) {
+            if (this.racunalnikProtiRacunalniku) {
                 // V AI vs AI, oba sta AI - vedno naredi potezo
-                const delay = 100;
-                setTimeout(() => this.makeAIMove(), delay);
-            } else if (this.currentPlayer === this.aiPlayer) {
+                const zamik = 100;
+                console.log('🤖 AI vs AI: Sprožam nasprotni AI (trenutniIgralec=' + this.trenutniIgralec + ')');
+                setTimeout(() => this.izvediAIPotezo(), zamik);
+            } else if (this.trenutniIgralec === this.racunalnikIgralec) {
                 // V PvC, samo ko je red AIja
-                const delay = 300;
-                setTimeout(() => this.makeAIMove(), delay);
+                const zamik = 300;
+                console.log('🤖 PvC: Sprožam AI (trenutniIgralec=' + this.trenutniIgralec + ')');
+                setTimeout(() => this.izvediAIPotezo(), zamik);
+            } else {
+                console.log('👤 PvC: Čakam na človeka (trenutniIgralec=' + this.trenutniIgralec + ')');
             }
         }
         
         return true;
     }
 
-    applyGravity(row, col) {
+    uporabiGravitacijo(vrsta, stolpec) {
         // Iskalnik od kliknjene vrste NAVZDOL (ne čez ves stolpec)
         // Poišči prvo polno mesto POD kliknjeno vrsto
-        for (let r = row + 1; r < this.boardSize; r++) {
-            if (this.board[r][col] !== null || this.blocked[r][col]) {
+        for (let v = vrsta + 1; v < this.velikostPolja; v++) {
+            if (this.plošča[v][stolpec] !== null || this.zaprte[v][stolpec]) {
                 // Našli smo polno mesto, vrni mesto en red nad njim
-                if (r - 1 >= row) {
-                    return r - 1;
+                if (v - 1 >= vrsta) {
+                    return v - 1;
                 }
                 return -1; // Ni prostora nad njim (je takoj pod klikom)
             }
         }
         // Ni nobenega polnega mesta pod klikom, postavi na dno plošče
-        return this.boardSize - 1;
+        return this.velikostPolja - 1;
     }
 
-    rotateBoardClockwise(board, size) {
+    rotirajPloščoUR (plošča, velikost) {
         // Rotira 2D niz za 90° v smeri urinega kazalca
         // Novo polje: novi[col][size-1-red] = stari[red][col]
-        const rotated = Array(size).fill(null).map(() => 
-            Array(size).fill(null)
+        const rotirana = Array(velikost).fill(null).map(() => 
+            Array(velikost).fill(null)
         );
         
-        for (let r = 0; r < size; r++) {
-            for (let c = 0; c < size; c++) {
-                rotated[c][size - 1 - r] = board[r][c];
+        for (let v = 0; v < velikost; v++) {
+            for (let s = 0; s < velikost; s++) {
+                rotirana[s][velikost - 1 - v] = plošča[v][s];
             }
         }
         
-        return rotated;
+        return rotirana;
     }
 
-    isValidMove(row, col) {
+    jeVeljavnaPoteza(vrsta, stolpec) {
         // Preveri ali je stolpec vsaj malo prosto
-        if (col < 0 || col >= this.boardSize) return false;
+        if (stolpec < 0 || stolpec >= this.velikostPolja) return false;
         
         // Preverimo ali obstaja kakšno prosto mesto v tem stolpcu
-        for (let r = 0; r < this.boardSize; r++) {
-            if (this.board[r][col] === null && !this.blocked[r][col]) {
+        for (let v = 0; v < this.velikostPolja; v++) {
+            if (this.plošča[v][stolpec] === null && !this.zaprte[v][stolpec]) {
                 return true;
             }
         }
         return false;
     }
 
-    checkWin(row, col) {
-        const player = this.board[row][col];
-        const directions = [
-            { dr: 0, dc: 1 },   // Vodoravno
-            { dr: 1, dc: 0 },   // Navpično
-            { dr: 1, dc: 1 },   // Diagonalno /
-            { dr: 1, dc: -1 }   // Diagonalno \
+    preveriZmago(vrsta, stolpec) {
+        const igralec = this.plošča[vrsta][stolpec];
+        const smeri = [
+            { dv: 0, ds: 1 },   // Vodoravno
+            { dv: 1, ds: 0 },   // Navpično
+            { dv: 1, ds: 1 },   // Diagonalno /
+            { dv: 1, ds: -1 }   // Diagonalno \
         ];
 
-        for (let dir of directions) {
-            const cells = [{ r: row, c: col }];
+        for (let smer of smeri) {
+            const polja = [{ v: vrsta, s: stolpec }];
             
             // Naprej
             for (let i = 1; i < 4; i++) {
-                const r = row + dir.dr * i;
-                const c = col + dir.dc * i;
-                if (r >= 0 && r < this.boardSize && c >= 0 && c < this.boardSize && 
-                    this.board[r][c] === player && !this.blocked[r][c]) {
-                    cells.push({ r, c });
+                const v = vrsta + smer.dv * i;
+                const s = stolpec + smer.ds * i;
+                if (v >= 0 && v < this.velikostPolja && s >= 0 && s < this.velikostPolja && 
+                    this.plošča[v][s] === igralec && !this.zaprte[v][s]) {
+                    polja.push({ v, s });
                 } else break;
             }
 
             // Nazaj
             for (let i = 1; i < 4; i++) {
-                const r = row - dir.dr * i;
-                const c = col - dir.dc * i;
-                if (r >= 0 && r < this.boardSize && c >= 0 && c < this.boardSize && 
-                    this.board[r][c] === player && !this.blocked[r][c]) {
-                    cells.unshift({ r, c });
+                const v = vrsta - smer.dv * i;
+                const s = stolpec - smer.ds * i;
+                if (v >= 0 && v < this.velikostPolja && s >= 0 && s < this.velikostPolja && 
+                    this.plošča[v][s] === igralec && !this.zaprte[v][s]) {
+                    polja.unshift({ v, s });
                 } else break;
             }
 
-            if (cells.length >= 4) {
+            if (polja.length >= 4) {
                 // Vrni le prve 4 celice
-                return { player, cells: cells.slice(0, 4) };
+                return { igralec, polja: polja.slice(0, 4) };
             }
         }
 
         return null;
     }
 
-    isBoardFull() {
-        for (let r = 0; r < this.boardSize; r++) {
-            for (let c = 0; c < this.boardSize; c++) {
-                if (this.board[r][c] === null && !this.blocked[r][c]) {
+    jePoljePolno() {
+        for (let v = 0; v < this.velikostPolja; v++) {
+            for (let s = 0; s < this.velikostPolja; s++) {
+                if (this.plošča[v][s] === null && !this.zaprte[v][s]) {
                     return false;
                 }
             }
@@ -230,534 +250,914 @@ class FourInARow {
         return true;
     }
 
-    expandBoard(shouldRotate = false, showMessage = true) {
-        const oldSize = this.boardSize;
-        this.boardSize += 4; // Povečaj za 2 na vsaki strani (skupno 4)
-
-        // Ustvari novo prazno ploščo
-        const newBoard = Array(this.boardSize).fill(null).map(() => 
-            Array(this.boardSize).fill(null)
-        );
-        const newBlocked = Array(this.boardSize).fill(null).map(() => 
-            Array(this.boardSize).fill(false)
-        );
-
-        // Če je izenačenje, rotira stara polja za 90° v smeri urinega kazalca
-        let boardToUse = this.board;
-        let blockedToUse = this.blocked;
+    razširiPolje(prikažiSporočilo = true) {
+        console.log('📈 Razširitev polja - rezultati O:' + this.rezultati.o + ' X:' + this.rezultati.x);
         
-        if (shouldRotate) {
-            boardToUse = this.rotateBoardClockwise(this.board, oldSize);
-            blockedToUse = this.rotateBoardClockwise(this.blocked, oldSize);
-            this.rotationAngle = (this.rotationAngle + 90) % 360;
+        const staraVelikost = this.velikostPolja;
+        this.velikostPolja += 4;
+
+        const novaPlošča = Array(this.velikostPolja).fill(null).map(() => 
+            Array(this.velikostPolja).fill(null)
+        );
+        const novaZaprta = Array(this.velikostPolja).fill(null).map(() => 
+            Array(this.velikostPolja).fill(false)
+        );
+
+        let ploščaZaUporabo = this.plošča;
+        let zaprtaZaUporabo = this.zaprte;
+        
+        // Preveri ali je izenačenje (rezultat enak za oba)
+        const jeIzenačenje = this.rezultati.o === this.rezultati.x;
+        
+        if (jeIzenačenje) {
+            console.log('🔄 OBRAČAM polje - ker je IZENAČENJE (oba ' + this.rezultati.o + ':' + this.rezultati.x + ')');
+            ploščaZaUporabo = this.rotirajPloščoUR(this.plošča, staraVelikost);
+            zaprtaZaUporabo = this.rotirajPloščoUR(this.zaprte, staraVelikost);
+            this.kotAlfabete = (this.kotAlfabete + 90) % 360;
+        } else {
+            console.log('✓ NE obračam polje - ker NEMA IZENAČENJA (' + this.rezultati.o + ':' + this.rezultati.x + ')');
         }
 
         // Kopiraj stare podatke v sredino (offset: 2 kvadratka na stran)
         const offset = 2;
-        for (let r = 0; r < oldSize; r++) {
-            for (let c = 0; c < oldSize; c++) {
+        for (let v = 0; v < staraVelikost; v++) {
+            for (let s = 0; s < staraVelikost; s++) {
                 // Kopiraj znake
-                newBoard[r + offset][c + offset] = boardToUse[r][c];
+                novaPlošča[v + offset][s + offset] = ploščaZaUporabo[v][s];
                 // Kopiraj status zapolnjenosti
-                newBlocked[r + offset][c + offset] = blockedToUse[r][c];
+                novaZaprta[v + offset][s + offset] = zaprtaZaUporabo[v][s];
             }
         }
 
-        this.board = newBoard;
-        this.blocked = newBlocked;
-        // NE brisanje winningCells - ohrani jih za prikaz
-        this.currentPlayer = 'o';
-        this.history = [];
-        this.noWinUntilMove = 2; // Zadrži zmago za prvi 2 potezi po razširitvi
-        this.movesCount = 0; // Resetiraj brojanje potez za novo povečanje
+        this.plošča = novaPlošča;
+        this.zaprte = novaZaprta;
+        
+        // Preslikaj zmagovalna polja sa starim koordinatama na nove koordinate
+        this.zmagovalnaPolja = this.zmagovalnaPolja.map(polje => ({
+            v: polje.v + offset,
+            s: polje.s + offset
+        }));
+        
+        this.trenutniIgralec = 'o';
+        this.zgodovina = [];
+        this.zadrževanjePobede = 2; // Zadrži zmago za prvi 2 potezi po razširitvi
+        this.številoPotez = 0; // Resetiraj brojanje potez za novo povečanje
         
         // Posodobi meje starega območja
-        this.oldAreaBounds = {
-            minRow: offset,
-            maxRow: offset + oldSize - 1,
-            minCol: offset,
-            maxCol: offset + oldSize - 1
+        this.stareMeje = {
+            minVrsta: offset,
+            maxVrsta: offset + staraVelikost - 1,
+            minStolpec: offset,
+            maxStolpec: offset + staraVelikost - 1
         };
         
         // Počisti stare SVG črte
-        const grid = document.getElementById('gameBoard');
-        if (grid) {
-            const oldSvgs = grid.querySelectorAll('svg');
-            oldSvgs.forEach(svg => svg.remove());
+        const mreža = document.getElementById('gameBoard');
+        if (mreža) {
+            const stariSvgi = mreža.querySelectorAll('svg');
+            stariSvgi.forEach(svg => svg.remove());
         }
         
-        if (showMessage) {
-            this.showMessage(`Polje je razširjeno na ${this.boardSize}x${this.boardSize}! Nova igra.`, 'tie');
+        if (prikažiSporočilo) {
+            this.prikaziSporočilo(`Polje je razširjeno na ${this.velikostPolja}x${this.velikostPolja}! Nova igra.`, 'tie');
         }
         
-        this.renderBoard();
+        this.rišiPloščo();
+        this.razlogZaRazširitev = null;
         
         // AI poteza
-        if (this.aiEnabled && this.currentPlayer === this.aiPlayer) {
-            setTimeout(() => this.makeAIMove(), 800);
+        if (this.racunalnikOmogočen) {
+            if (this.racunalnikProtiRacunalniku) {
+                // U AI vs AI, svaki igrač je računalnik, tako da ide AI poteza
+                setTimeout(() => this.izvediAIPotezo(), 800);
+            } else if (this.trenutniIgralec === this.racunalnikIgralec) {
+                // U PvC, samo ako je red računalnika
+                setTimeout(() => this.izvediAIPotezo(), 800);
+            }
         }
     }
 
-    rotateBoard() {
+    rotirajPloščo() {
+        console.log('🔀 Rotacija plošče med igro!');
         // Obrni ploščo za 90 stopinj v smeri urinega kazalca
-        const newBoard = Array(this.boardSize).fill(null).map(() => 
-            Array(this.boardSize).fill(null)
+        const novaPlošča = Array(this.velikostPolja).fill(null).map(() => 
+            Array(this.velikostPolja).fill(null)
         );
 
-        for (let r = 0; r < this.boardSize; r++) {
-            for (let c = 0; c < this.boardSize; c++) {
+        for (let v = 0; v < this.velikostPolja; v++) {
+            for (let s = 0; s < this.velikostPolja; s++) {
                 // Rotacija: new[c][size-1-r] = old[r][c]
-                newBoard[c][this.boardSize - 1 - r] = this.board[r][c];
+                novaPlošča[s][this.velikostPolja - 1 - v] = this.plošča[v][s];
             }
         }
 
-        this.board = newBoard;
-        this.rotationAngle += 90;
-        this.gameOver = false;
-        this.currentPlayer = 'o';
-        this.history = [];
+        this.plošča = novaPlošča;
+        this.kotAlfabete += 90;
+        this.konecIgre = false;
+        this.trenutniIgralec = 'o';
+        this.zgodovina = [];
         
-        this.showMessage('Ploča se je vrtela za 90°!', 'rotating');
+        this.prikaziSporočilo('Ploča se je vrtela za 90°!', 'rotating');
         
         // Animiraj rotacijo
         const gameBoard = document.getElementById('gameBoard');
         gameBoard.classList.add('rotating-board');
         setTimeout(() => gameBoard.classList.remove('rotating-board'), 600);
         
-        this.renderBoard();
+        this.rišiPloščo();
     }
 
-    renderBoard() {
-        const boardContainer = document.getElementById('gameBoard');
-        boardContainer.innerHTML = '';
+    rišiPloščo() {
+        const vsebinaPlošče = document.getElementById('gameBoard');
+        vsebinaPlošče.innerHTML = '';
 
-        const grid = document.createElement('div');
-        grid.className = 'board-grid';
-        grid.style.gridTemplateColumns = `repeat(${this.boardSize}, 1fr)`;
-        grid.style.position = 'relative';
+        const mreža = document.createElement('div');
+        mreža.className = 'board-grid';
+        mreža.style.gridTemplateColumns = `repeat(${this.velikostPolja}, 1fr)`;
+        mreža.style.position = 'relative';
+        mreža.style.display = 'grid';
+        mreža.style.gap = '5px';
+        mreža.style.width = 'fit-content';
+        mreža.style.margin = '0 auto';
 
-        for (let r = 0; r < this.boardSize; r++) {
-            for (let c = 0; c < this.boardSize; c++) {
-                const cell = document.createElement('div');
-                cell.className = 'cell';
-                cell.id = `cell-${r}-${c}`;
+        for (let v = 0; v < this.velikostPolja; v++) {
+            for (let s = 0; s < this.velikostPolja; s++) {
+                const polje = document.createElement('div');
+                polje.className = 'cell';
+                polje.id = `cell-${v}-${s}`;
                 
-                const value = this.board[r][c];
-                if (value) {
-                    cell.textContent = value.toUpperCase();
-                    cell.classList.add(value);
+                const vrednost = this.plošča[v][s];
+                if (vrednost) {
+                    polje.textContent = vrednost.toUpperCase();
+                    polje.classList.add(vrednost);
                 }
 
                 // Preveri ali je zapolnjeno (kot del zmage)
-                if (this.blocked[r][c] && value) {
-                    cell.classList.add('blocked');
+                if (this.zaprte[v][s] && vrednost) {
+                    polje.classList.add('blocked');
                     // Ne dovoli klikanja na zapolnjene znake
-                } else if (!value && !this.blocked[r][c]) {
+                } else if (!vrednost && !this.zaprte[v][s]) {
                     // Samo prazna neblokirana polja dovolijo klikanje
-                    cell.onclick = () => this.makeMove(r, c);
+                    // ALE: samo ako je trenutni igrač čovek (ne računalnik)
+                    polje.onclick = () => {
+                        // Proverite da li je ovo čovek (ne AI) na redu
+                        const jeAIProtiAI = this.racunalnikProtiRacunalniku;
+                        const trenutniJeAI = (this.trenutniIgralec === this.racunalnikIgralec) && this.racunalnikOmogočen;
+                        
+                        if (jeAIProtiAI) {
+                            // AI vs AI - ne dovolaj klikanje
+                            console.log('⛔ AI vs AI: Klikanje nije dozvoljeno!');
+                            return;
+                        }
+                        
+                        if (trenutniJeAI) {
+                            // AI je na redu - ne dovolaj klikanje
+                            console.log('⛔ Nije tvoj red - AI razmišlja...');
+                            return;
+                        }
+                        
+                        // Čovek je na redu - dovolaj potezu
+                        this.izvediPotezo(v, s);
+                    };
                 }
 
                 // Preveri ali je v zmagovalni kombinaciji
-                const isWinning = this.winningCells.some(w => w.r === r && w.c === c);
-                if (isWinning) {
-                    cell.classList.add('winning');
+                const jeZmagovalno = this.zmagovalnaPolja.some(z => z.v === v && z.s === s);
+                if (jeZmagovalno) {
+                    polje.classList.add('winning');
                 }
 
-                grid.appendChild(cell);
+                mreža.appendChild(polje);
             }
         }
 
-        boardContainer.appendChild(grid);
+        vsebinaPlošče.appendChild(mreža);
         
-        this.updateInfo();
-        this.updateUndoBtn();
+        this.posodobiInfo();
+        this.posodobiGumbRazveljavi();
     }
 
-    updateInfo() {
-        document.getElementById('boardSize').textContent = `${this.boardSize}x${this.boardSize}`;
-        this.updateDifficultyDisplay();
-        document.getElementById('scoreO').textContent = this.scores.o;
-        document.getElementById('scoreX').textContent = this.scores.x;
+    posodobiInfo() {
+        document.getElementById('boardSize').textContent = `${this.velikostPolja}x${this.velikostPolja}`;
+        this.posodobiPrikazTežavosti();
+        document.getElementById('scoreO').textContent = this.rezultati.o;
+        document.getElementById('scoreX').textContent = this.rezultati.x;
         
-        const playerSpan = document.querySelector('#currentPlayer');
-        if (this.gameOver) {
-            playerSpan.innerHTML = 'Igra končana!';
+        const igralecSpan = document.querySelector('#currentPlayer');
+        if (this.konecIgre) {
+            igralecSpan.innerHTML = 'Igra končana!';
         } else {
-            const playerClass = this.currentPlayer === 'o' ? 'player-o' : 'player-x';
-            playerSpan.innerHTML = `Na vrsti: <span class="${playerClass}">${this.currentPlayer.toUpperCase()}</span>`;
+            const igralecClass = this.trenutniIgralec === 'o' ? 'player-o' : 'player-x';
+            igralecSpan.innerHTML = `Na vrsti: <span class="${igralecClass}">${this.trenutniIgralec.toUpperCase()}</span>`;
         }
     }
 
-    updateUndoBtn() {
-        const undoBtn = document.getElementById('undoBtn');
-        undoBtn.disabled = this.history.length === 0;
+    posodobiGumbRazveljavi() {
+        const gumbRazveljavi = document.getElementById('undoBtn');
+        // Onemogući undo ako:
+        // 1. Nema istorije poteza
+        // 2. Igra je gotova
+        // 3. AI je na redu (čovek ne može da napravi undo dok AI razmišlja)
+        const aiJeNaRedu = this.racunalnikOmogočen && (this.trenutniIgralec === this.racunalnikIgralec);
+        gumbRazveljavi.disabled = (this.zgodovina.length === 0) || this.konecIgre || aiJeNaRedu;
     }
 
-    updateDifficultyDisplay() {
-        const diffDisplay = document.getElementById('difficultyDisplay');
-        if (!diffDisplay) return;
+    posodobiPrikazTežavosti() {
+        const prikazTežavosti = document.getElementById('difficultyDisplay');
+        if (!prikazTežavosti) return;
         
-        if (!this.aiEnabled) {
-            diffDisplay.textContent = '';
+        if (!this.racunalnikOmogočen) {
+            prikazTežavosti.textContent = '';
             return;
         }
         
-        let diffText = '';
-        if (this.aiVsAi || (this.aiPlayer === 'x' && this.aiEnabled)) {
-            // Prikazi čemu igramo nasprotno
-            let difficulty = this.aiDifficulty;
+        let težavnostTekst = '';
+        if (this.racunalnikProtiRacunalniku || (this.racunalnikIgralec === 'x' && this.racunalnikOmogočen)) {
+            let težavnost = this.racunalnikTežavnost;
             
-            if (this.dynamicDifficulty) {
-                // Prikaži trenutno razino naraščajočne težavnosti
-                if (this.movesCount < 3) {
-                    diffText = 'Nasprotnik: Lahka (❶)';
-                } else if (this.movesCount < 8) {
-                    diffText = 'Nasprotnik: Srednja (❷)';
+            if (this.dinamičnaTežavnost) {
+                if (this.številoPotez < 3) {
+                    težavnostTekst = 'Nasprotnik: Lahka (❶) - Gleda ' + this.globinaPredgleda + ' potez unapred';
+                } else if (this.številoPotez < 8) {
+                    težavnostTekst = 'Nasprotnik: Srednja (❷) - Gleda ' + this.globinaPredgleda + ' poteza unapred';
                 } else {
-                    diffText = 'Nasprotnik: Težka (❸)';
+                    težavnostTekst = 'Nasprotnik: Težka (❸) - Gleda ' + this.globinaPredgleda + ' poteza unapred';
                 }
             } else {
-                const labels = {
-                    'easy': 'Lahka 🟢',
-                    'medium': 'Srednja 🟡',
-                    'hard': 'Težka 🔴'
+                const oznake = {
+                    'lahka': 'Lahka 🟢',
+                    'srednja': 'Srednja 🟡',
+                    'težka': 'Težka 🔴'
                 };
-                diffText = 'Nasprotnik: ' + (labels[difficulty] || difficulty);
+                težavnostTekst = 'Nasprotnik: ' + (oznake[težavnost] || težavnost) + ' - Gleda ' + this.globinaPredgleda + ' poteza unapred';
             }
         }
         
-        diffDisplay.textContent = diffText;
+        prikazTežavosti.textContent = težavnostTekst;
     }
 
-    undo() {
-        if (this.history.length === 0) return;
+    razveljavi() {
+        if (this.zgodovina.length === 0) return;
 
-        const previous = this.history.pop();
-        this.board = previous.board;
-        this.blocked = previous.blocked;
-        this.currentPlayer = previous.player;
-        this.boardSize = previous.boardSize;
-        this.rotationAngle = previous.rotationAngle;
-        this.scores = previous.scores;
-        this.winningCells = previous.winningCells;
+        const prejšnja = this.zgodovina.pop();
+        this.plošča = prejšnja.plošča;
+        this.zaprte = prejšnja.zaprte;
+        this.trenutniIgralec = prejšnja.igralec;
+        this.velikostPolja = prejšnja.velikostPolja;
+        this.kotAlfabete = prejšnja.kotAlfabete;
+        this.rezultati = prejšnja.rezultati;
+        this.zmagovalnaPolja = prejšnja.zmagovalnaPolja;
 
-        this.renderBoard();
+        this.rišiPloščo();
         this.clearMessage();
     }
 
-    showMessage(text, type = '') {
-        const messageEl = document.getElementById('message');
-        messageEl.textContent = text;
-        messageEl.className = 'message ' + type;
+    prikaziSporočilo(besedilo, tip = '') {
+        const sporočiloEl = document.getElementById('message');
+        sporočiloEl.textContent = besedilo;
+        sporočiloEl.className = 'message ' + tip;
+    }
+
+    prikaziKomentarAI(besedilo) {
+        // Komentarji za AI se ne prikazujejo - funkcija ostaja za kompatibilnost
     }
 
     clearMessage() {
-        const messageEl = document.getElementById('message');
-        messageEl.textContent = '';
-        messageEl.className = 'message';
+        const sporočiloEl = document.getElementById('message');
+        sporočiloEl.textContent = '';
+        sporočiloEl.className = 'message';
     }
 
     reset() {
-        console.log('reset() poklican');
-        this.boardSize = 5;
-        this.board = [];
-        this.blocked = [];
-        this.currentPlayer = 'o';
-        this.gameOver = false;
-        this.history = [];
-        this.winningCells = [];
-        this.rotationAngle = 0;
-        this.scores = { o: 0, x: 0 };
-        this.noWinUntilMove = 0;
-        this.oldAreaBounds = { minRow: 0, maxRow: 4, minCol: 0, maxCol: 4 };
-        this.movesCount = 0;
-        this.dynamicDifficulty = false;
-        this.aiEnabled = false;
-        this.aiVsAi = false;
-        this.aiPlayer = 'x';
-        this.aiDifficulty = 'medium';
-        console.log('reset() dovršen - currentPlayer=' + this.currentPlayer);
+        console.log('🔄 Ponovna inicijalizacija igre');
+        
+        // Ukloni rumenu oznaku za pobjedu
+        const winingCells = document.querySelectorAll('.cell.winning');
+        winingCells.forEach(cell => cell.classList.remove('winning'));
+        
+        this.velikostPolja = 5;
+        this.plošča = [];
+        this.zaprte = [];
+        this.trenutniIgralec = 'o';
+        this.konecIgre = false;
+        this.zgodovina = [];
+        this.zmagovalnaPolja = [];
+        this.kotAlfabete = 0;
+        this.rezultati = { o: 0, x: 0 };
+        this.zadrževanjePobede = 0;
+        this.stareMeje = { minVrsta: 0, maxVrsta: 4, minStolpec: 0, maxStolpec: 4 };
+        this.številoPotez = 0;
+        this.dinamičnaTežavost = false;
+        this.racunalnikOmogočen = false;
+        this.racunalnikProtiRacunalniku = false;
+        this.racunalnikIgralec = 'x';
+        this.racunalnikTežavnost = 'srednja';
+        this.razlogZaRazširitev = null; // Resetiraj razlog za razširitev
+        this.globinaPredgleda = 3; // Resetiraj dubino lookahead-a
+        this.zgodovinaHevristike = {}; // Hevristika za prikaz časnih dobrih potez
+        this.ubijačnePoteze = {}; // Ubijačne poteze za hevristiko
+        console.log('✓ Igra je pripravljena - trenutniIgralec=' + this.trenutniIgralec);
         this.clearMessage();
-        this.initBoard();
+        this.inicializacijaPolja();
     }
 
-    makeAIMove() {
-        console.log('makeAIMove() poklican - currentPlayer=' + this.currentPlayer + ', aiPlayer=' + this.aiPlayer);
-        if (this.currentPlayer !== this.aiPlayer) {
-            console.log('Ni AI poteza - trenutni: ' + this.currentPlayer + ', AI: ' + this.aiPlayer);
+    izvediAIPotezo() {
+        console.log('🤖 Izvajam AI potezo - trenutniIgralec=' + this.trenutniIgralec);
+        
+        // Za AI vs AI, oba računalnika se pokreću
+        if (!this.racunalnikProtiRacunalniku && this.trenutniIgralec !== this.racunalnikIgralec) {
+            console.log('⏭️ Ni AI poteza - čakam na igrača');
             return;
         }
 
-        let result = { col: -1, reason: '' };
-        let currentDifficulty = this.aiDifficulty;
+        let rezultat = { vrsta: -1, stolpec: -1, razlog: '' };
         
-        // Naraščajoča težavnost
-        if (this.dynamicDifficulty) {
-            if (this.movesCount < 3) {
-                currentDifficulty = 'easy';
-            } else if (this.movesCount < 8) {
-                currentDifficulty = 'medium';
-            } else {
-                currentDifficulty = 'hard';
-            }
-        }
-        
-        if (currentDifficulty === 'easy') {
-            result = this.getEasyAIMove();
-        } else if (currentDifficulty === 'medium') {
-            result = this.getMediumAIMove();
-        } else {
-            result = this.getHardAIMove();
-        }
+        // Vedno koristi najjačí hardest algoritam (globina 3)
+        this.globinaPredgleda = 3;
+        rezultat = this.getHardAIMove();
+        rezultat = this.getHardAIMove();
 
-        console.log('AI poteža: stolpec=' + result.col + ', težavnost=' + currentDifficulty);
+        console.log('✓ AI poteza: [' + rezultat.vrsta + ',' + rezultat.stolpec + ']');
 
-        if (result.col !== -1) {
-            console.log('Pozivam makeMove(0, ' + result.col + ')');
-            this.makeMove(0, result.col);
-        } else {
-            console.log('Neveljavna poteza - stolpec=-1');
-        }
-    }
-
-    getEasyAIMove() {
-        const col = this.getRandomValidMove();
-        console.log('Easy AI: naključni stolpec=' + col);
-        return { col: col, reason: '' };
-    }
-
-    showAIComment(reason = '') {
-        // Funkcija je odstranjena
-    }
-
-    getMediumAIMove() {
-        console.log('Medium AI: preverjam zmago...');
-        // Prvo preveri zmago
-        for (let c = 0; c < this.boardSize; c++) {
-            if (this.isValidMove(0, c)) {
-                const row = this.applyGravity(0, c);
-                if (row === -1) continue;
+        if (rezultat.vrsta !== -1 && rezultat.stolpec !== -1) {
+            console.log('→ Izvajam potezo na [' + rezultat.vrsta + ',' + rezultat.stolpec + ']');
+            const uspeh = this.izvediPotezo(rezultat.vrsta, rezultat.stolpec);
+            
+            // Ako je poteza neuspešna (npr zbog zadrževanjePobede), pokušaj drugom potezom
+            if (!uspeh) {
+                console.log('❌ Poteza je neuspešna - pokušavam rezervno potezo');
+                // Briši poruku o grešci
+                this.clearMessage();
                 
-                this.board[row][c] = this.aiPlayer;
-                if (this.checkWin(row, c)) {
-                    this.board[row][c] = null;
-                    console.log('Medium AI: našel zmago na stolpcu ' + c);
-                    return { col: c, reason: 'Zmaga! Prepričan sem bil...' };
+                // Pokušaj sa random validnom potezom
+                const maxPoskusajev = 5;
+                for (let poskusaj = 0; poskusaj < maxPoskusajev; poskusaj++) {
+                    const rezervniPremik = this.getRandomValidMove2D();
+                    if (rezervniPremik.vrsta !== -1 && rezervniPremik.stolpec !== -1) {
+                        console.log('  Poskus ' + (poskusaj + 1) + ': [' + rezervniPremik.vrsta + ',' + rezervniPremik.stolpec + ']');
+                        const ponovniUspeh = this.izvediPotezo(rezervniPremik.vrsta, rezervniPremik.stolpec);
+                        if (ponovniUspeh) {
+                            console.log('  ✓ Uspešna rezervna poteza!');
+                            break;
+                        }
+                    }
                 }
-                this.board[row][c] = null;
             }
+        } else {
+            console.log('⚠️ Neveljavna poteza - ni več možnih potez!');
         }
-
-        console.log('Medium AI: preverjam nasprotnika...');
-        // Nato preveri nasprotnikov zmago
-        const opponent = this.aiPlayer === 'o' ? 'x' : 'o';
-        for (let c = 0; c < this.boardSize; c++) {
-            if (this.isValidMove(0, c)) {
-                const row = this.applyGravity(0, c);
-                if (row === -1) continue;
-                
-                this.board[row][c] = opponent;
-                if (this.checkWin(row, c)) {
-                    this.board[row][c] = null;
-                    console.log('Medium AI: blokiral zmago na stolpcu ' + c);
-                    return { col: c, reason: 'Blokiral sem tvojo zmago!' };
-                }
-                this.board[row][c] = null;
-            }
-        }
-
-        console.log('Medium AI: izbira sredino...');
-        // Tretje: preferira sredino (bolji položaj)
-        const center = Math.floor(this.boardSize / 2);
-        if (this.isValidMove(0, center)) {
-            console.log('Medium AI: izbira sredino ' + center);
-            return { col: center, reason: 'Dobra strateška pozicija!' };
-        }
-
-        console.log('Medium AI: izbira naključno...');
-        // Sicer izberi naključno
-        return { col: this.getRandomValidMove(), reason: 'Hm, poglejmo kaj se zgodi...' };
     }
 
     getHardAIMove() {
-        // Prvo preveri zmago
-        for (let c = 0; c < this.boardSize; c++) {
-            if (this.isValidMove(0, c)) {
-                const row = this.applyGravity(0, c);
-                if (row === -1) continue;
-                
-                this.board[row][c] = this.aiPlayer;
-                if (this.checkWin(row, c)) {
-                    this.board[row][c] = null;
-                    return { col: c, reason: 'Zmaga! Odličnih štiri v vrsti!' };
+        if (this.zadrževanjePobede === 0) {
+            for (let v = 0; v < this.velikostPolja; v++) {
+                for (let s = 0; s < this.velikostPolja; s++) {
+                    if (this.plošča[v][s] === null && !this.zaprte[v][s]) {
+                        this.plošča[v][s] = this.trenutniIgralec;
+                        if (this.preveriZmago(v, s)) {
+                            this.plošča[v][s] = null;
+                            return { vrsta: v, stolpec: s, razlog: 'Zmaga!' };
+                        }
+                        this.plošča[v][s] = null;
+                    }
                 }
-                this.board[row][c] = null;
             }
         }
 
-        // Nato preveri nasprotnikov zmago
-        const opponent = this.aiPlayer === 'o' ? 'x' : 'o';
-        for (let c = 0; c < this.boardSize; c++) {
-            if (this.isValidMove(0, c)) {
-                const row = this.applyGravity(0, c);
-                if (row === -1) continue;
-                
-                this.board[row][c] = opponent;
-                if (this.checkWin(row, c)) {
-                    this.board[row][c] = null;
-                    return { col: c, reason: 'Dobro, da sem to blokiral!' };
+        const nasprotnik = this.trenutniIgralec === 'o' ? 'x' : 'o';
+        for (let v = 0; v < this.velikostPolja; v++) {
+            for (let s = 0; s < this.velikostPolja; s++) {
+                if (this.plošča[v][s] === null && !this.zaprte[v][s]) {
+                    this.plošča[v][s] = nasprotnik;
+                    if (this.preveriZmago(v, s)) {
+                        this.plošča[v][s] = null;
+                        return { vrsta: v, stolpec: s, razlog: 'Blokada!' };
+                    }
+                    this.plošča[v][s] = null;
                 }
-                this.board[row][c] = null;
             }
         }
 
-        // Tretje: Analiza pozicije za boljše poteze
-        let bestScore = -Infinity;
-        let bestColumn = -1;
-        let maxLineLength = 0;
-        let blockedLine = false;
+        let najboljšaOcena = -Infinity;
+        let najboljšaVrsta = -1, najboljšiStolpec = -1;
+        let ocenjenoPotez = 0;
 
-        for (let c = 0; c < this.boardSize; c++) {
-            if (this.isValidMove(0, c)) {
-                const row = this.applyGravity(0, c);
-                if (row === -1) continue;
-                
-                this.board[row][c] = this.aiPlayer;
-                const score = this.evaluatePosition(row, c, this.aiPlayer);
-                const aiLineLength = this.countLineLength(row, c, this.aiPlayer);
-                const oppLineLength = this.countLineLength(row, c, opponent);
-                
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestColumn = c;
-                    maxLineLength = aiLineLength;
-                    blockedLine = oppLineLength >= 3;
+        // Izračunaj vrednosti polja pre nego što sortiram poteze
+        this.izračunajVrednostiPolj();
+
+        // Zberi vse veljavne poteze in jih sortiraj po hevristiki
+        let veljavnePoteze = [];
+        for (let v = 0; v < this.velikostPolja; v++) {
+            for (let s = 0; s < this.velikostPolja; s++) {
+                if (this.plošča[v][s] === null && !this.zaprte[v][s]) {
+                    let preskociti = false;
+                    if (this.zadrževanjePobede > 0) {
+                        this.plošča[v][s] = this.trenutniIgralec;
+                        if (this.preveriZmago(v, s)) {
+                            preskociti = true;
+                        }
+                        this.plošča[v][s] = null;
+                    }
+                    
+                    if (!preskociti) {
+                        // Izračunaj prioriteto poteze za Move Ordering
+                        const prioriteta = this.izračunajPrioriteto(v, s);
+                        veljavnePoteze.push({ vrsta: v, stolpec: s, prioriteta: prioriteta });
+                    }
                 }
-                
-                this.board[row][c] = null;
             }
         }
 
-        if (bestColumn !== -1) {
-            let reason = 'Kot da bi znala kaj delam...';
+        // Sortiraj poteze po prioriteti (descending) - najpomembnejše poteze prvo
+        veljavnePoteze.sort((a, b) => b.prioriteta - a.prioriteta);
+
+        // Log top 3 poteza sa njihovim prioritetama
+        console.log('📊 Najboljše 3 opcije:');
+        for (let i = 0; i < Math.min(3, veljavnePoteze.length); i++) {
+            console.log(`  ${i+1}. [${veljavnePoteze[i].vrsta},${veljavnePoteze[i].stolpec}] (prioriteta: ${veljavnePoteze[i].prioriteta})`);
+        }
+
+        // Oceni poteze v urejenem vrstnem redu (Move Ordering za hitrejši alfa-beta)
+        for (let poteza of veljavnePoteze) {
+            const v = poteza.vrsta;
+            const s = poteza.stolpec;
             
-            if (maxLineLength >= 3) {
-                reason = 'Tri v vrsti! Še ena in...';
-            } else if (blockedLine) {
-                reason = 'Preprečujem tvojo linijo!';
-            } else if (maxLineLength === 2) {
-                reason = 'Zanimiva pozicija!';
-            } else {
-                reason = 'Strateško razmišljam...';
+            this.plošča[v][s] = this.trenutniIgralec;
+            const ocena = this.minimax(nasprotnik, this.globinaPredgleda, -Infinity, Infinity, false);
+            ocenjenoPotez++;
+            
+            if (ocena > najboljšaOcena) {
+                najboljšaOcena = ocena;
+                najboljšaVrsta = v;
+                najboljšiStolpec = s;
             }
             
-            return { col: bestColumn, reason: reason };
+            this.plošča[v][s] = null;
         }
 
-        // Ako sve ostalo ne radi, idi u sredinu
-        const center = Math.floor(this.boardSize / 2);
-        if (this.isValidMove(0, center)) {
-            return { col: center, reason: 'Sredina je vedno dobra!' };
+        if (najboljšaVrsta !== -1) {
+            // Posodobi zgodovino hevristike - ta poteza je bila dobra
+            const ključ = najboljšaVrsta + ',' + najboljšiStolpec;
+            this.zgodovinaHevristike[ključ] = (this.zgodovinaHevristike[ključ] || 0) + 1;
+            
+            // Log za razmišljanje AI-ja (može se vidjeti u konzoli)
+            const globina = this.globinaPredgleda;
+            const tekstGlobine = globina === 1 ? '1 potezu unapred' : globina + ' poteza unapred';
+            console.log(`🎯 Izbrana poteza: [${najboljšaVrsta},${najboljšiStolpec}] (ocena: ${najboljšaOcena.toFixed(2)}, analiziral ${ocenjenoPotez} potez, ${tekstGlobine})`);
+            
+            return { vrsta: najboljšaVrsta, stolpec: najboljšiStolpec, razlog: 'Minimax analiza' };
         }
 
-        return { col: this.getRandomValidMove(), reason: 'Kar neki...' };
+        for (let v = 0; v < this.velikostPolja; v++) {
+            for (let s = 0; s < this.velikostPolja; s++) {
+                if (this.plošča[v][s] === null && !this.zaprte[v][s]) {
+                    return { vrsta: v, stolpec: s, razlog: 'Edina možnost' };
+                }
+            }
+        }
+
+        return { vrsta: -1, stolpec: -1, razlog: 'Brez potez' };
     }
 
-    evaluatePosition(row, col, player) {
-        let score = 0;
-        const opponent = player === 'o' ? 'x' : 'o';
+    getMediumAIMove() {
+        if (this.zadrževanjePobede === 0) {
+            for (let v = 0; v < this.velikostPolja; v++) {
+                for (let s = 0; s < this.velikostPolja; s++) {
+                    if (this.plošča[v][s] === null && !this.zaprte[v][s]) {
+                        this.plošča[v][s] = this.trenutniIgralec;
+                        if (this.preveriZmago(v, s)) {
+                            this.plošča[v][s] = null;
+                            console.log('🎯 Pobeda v naslednjem potezi! Odabiram [' + v + ',' + s + ']');
+                            return { vrsta: v, stolpec: s, razlog: 'Zmaga!' };
+                        }
+                        this.plošča[v][s] = null;
+                    }
+                }
+            }
+        }
 
-        // Vrednost blizine centru
-        const center = Math.floor(this.boardSize / 2);
-        score += Math.abs(col - center) * -5;
+        const nasprotnik = this.trenutniIgralec === 'o' ? 'x' : 'o';
+        for (let v = 0; v < this.velikostPolja; v++) {
+            for (let s = 0; s < this.velikostPolja; s++) {
+                if (this.plošča[v][s] === null && !this.zaprte[v][s]) {
+                    this.plošča[v][s] = nasprotnik;
+                    if (this.preveriZmago(v, s)) {
+                        this.plošča[v][s] = null;
+                        return { vrsta: v, stolpec: s, razlog: 'Blokada!' };
+                    }
+                    this.plošča[v][s] = null;
+                }
+            }
+        }
 
-        // Provera linija od 3 (skoro pobeda)
-        score += this.countLineLength(row, col, player) * 10;
-        score -= this.countLineLength(row, col, opponent) * 8;
+        const center = Math.floor(this.velikostPolja / 2);
+        for (let v = 0; v < this.velikostPolja; v++) {
+            if (this.plošča[v][center] === null && !this.zaprte[v][center]) {
+                return { vrsta: v, stolpec: center, razlog: 'Sredina' };
+            }
+        }
 
-        return score;
+        return this.getRandomValidMove2D();
     }
 
-    countLineLength(row, col, player) {
-        const directions = [
-            { dr: 0, dc: 1 },  // Horizontalno
-            { dr: 1, dc: 0 },  // Vertikalno
-            { dr: 1, dc: 1 },  // Dijagonalno /
-            { dr: 1, dc: -1 }  // Dijagonalno \
+    minimax(trenutniIgralec, globina, alfa, beta, jeMaximiziranje) {
+        const nasprotnik = trenutniIgralec === 'o' ? 'x' : 'o';
+        
+        const hash = this.ustvariHash();
+        if (this.transposicijskaTabela.has(hash)) {
+            return this.transposicijskaTabela.get(hash);
+        }
+
+        for (let v = 0; v < this.velikostPolja; v++) {
+            for (let s = 0; s < this.velikostPolja; s++) {
+                if (this.plošča[v][s] === trenutniIgralec) {
+                    if (this.preveriZmago(v, s)) {
+                        const rezultat = jeMaximiziranje ? 10000 : -10000;
+                        this.transposicijskaTabela.set(hash, rezultat);
+                        return rezultat;
+                    }
+                }
+            }
+        }
+
+        if (globina === 0) {
+            let ocena = 0;
+            
+            for (let v = 0; v < this.velikostPolja; v++) {
+                for (let s = 0; s < this.velikostPolja; s++) {
+                    if (this.plošča[v][s] === null && !this.zaprte[v][s]) {
+                        this.plošča[v][s] = trenutniIgralec;
+                        const mojaOcena = this.oceniPozicijo(v, s, trenutniIgralec);
+                        
+                        this.plošča[v][s] = nasprotnik;
+                        const nasprotnikOcena = this.oceniPozicijo(v, s, nasprotnik);
+                        
+                        this.plošča[v][s] = null;
+                        
+                        const razlika = jeMaximiziranje ? mojaOcena - nasprotnikOcena : nasprotnikOcena - mojaOcena;
+                        ocena += razlika;
+                    }
+                }
+            }
+            
+            this.transposicijskaTabela.set(hash, ocena);
+            return ocena;
+        }
+
+        let veljaveIndex = [];
+        for (let v = 0; v < this.velikostPolja; v++) {
+            for (let s = 0; s < this.velikostPolja; s++) {
+                if (this.plošča[v][s] === null && !this.zaprte[v][s]) {
+                    veljaveIndex.push({ vrsta: v, stolpec: s });
+                }
+            }
+        }
+
+        if (veljaveIndex.length === 0) {
+            return 0;
+        }
+
+        // Sortiraj poteze korištenjem Killer Move Heuristic memorije
+        const globinaKljuc = globina;
+        veljaveIndex.sort((a, b) => {
+            // Provjerite su li poteze u killer move memoriji
+            const aUbijačka = (this.ubijačnePoteze[globinaKljuc] === (a.vrsta + ',' + a.stolpec)) ? 1000 : 0;
+            const bUbijačka = (this.ubijačnePoteze[globinaKljuc] === (b.vrsta + ',' + b.stolpec)) ? 1000 : 0;
+            
+            // Sortiraj tako da ubijačke poteze budu prve
+            return bUbijačka - aUbijačka;
+        });
+
+        if (jeMaximiziranje) {
+            let maxOcena = -Infinity;
+            let najboljaUbijacka = null;
+            
+            for (let poteza of veljaveIndex) {
+                const v = poteza.vrsta;
+                const s = poteza.stolpec;
+                this.plošča[v][s] = trenutniIgralec;
+                
+                const ocena = this.minimax(nasprotnik, globina - 1, alfa, beta, false);
+                maxOcena = Math.max(maxOcena, ocena);
+                
+                // Ako smo našli alfa cutoff, memorisaj ovu potezu kao ubijačku
+                if (ocena > alfa) {
+                    najboljaUbijacka = v + ',' + s;
+                    alfa = ocena;
+                }
+                
+                this.plošča[v][s] = null;
+                
+                if (beta <= alfa) {
+                    // Zapamti ovu potezu kao ubijačku za ovu dubinu
+                    if (najboljaUbijacka) {
+                        this.ubijačnePoteze[globinaKljuc] = najboljaUbijacka;
+                    }
+                    break;
+                }
+            }
+            this.transposicijskaTabela.set(hash, maxOcena);
+            return maxOcena;
+        } else {
+            let minOcena = Infinity;
+            let najboljaUbijacka = null;
+            
+            for (let poteza of veljaveIndex) {
+                const v = poteza.vrsta;
+                const s = poteza.stolpec;
+                this.plošča[v][s] = trenutniIgralec;
+                
+                const ocena = this.minimax(nasprotnik, globina - 1, alfa, beta, true);
+                minOcena = Math.min(minOcena, ocena);
+                
+                // Ako smo našli beta cutoff, memorisaj ovu potezu kao ubijačku
+                if (ocena < beta) {
+                    najboljaUbijacka = v + ',' + s;
+                    beta = ocena;
+                }
+                
+                this.plošča[v][s] = null;
+                
+                if (beta <= alfa) {
+                    // Zapamti ovu potezu kao ubijačku za ovu dubinu
+                    if (najboljaUbijacka) {
+                        this.ubijačnePoteze[globinaKljuc] = najboljaUbijacka;
+                    }
+                    break;
+                }
+            }
+            this.transposicijskaTabela.set(hash, minOcena);
+            return minOcena;
+        }
+    }
+
+    ustvariHash() {
+        let hash = '';
+        for (let v = 0; v < this.velikostPolja; v++) {
+            for (let s = 0; s < this.velikostPolja; s++) {
+                const vrednost = this.plošča[v][s];
+                hash += vrednost === null ? '.' : (vrednost === 'o' ? 'O' : 'X');
+            }
+        }
+        return hash;
+    }
+
+    izračunajVrednostiPolj() {
+        // Izračunaj vrednost za svako polje na osnovu sledečih 5 mogućih potez
+        // Polja koja se ne menjaju ostaju nespremenjena
+        const stariVrednosti = this.vrednostiPolj || {};
+        this.vrednostiPolj = {};
+        
+        // Za svako polje, proceni koliko dobro bi bilo da ga zaposednem
+        for (let v = 0; v < this.velikostPolja; v++) {
+            for (let s = 0; s < this.velikostPolja; s++) {
+                const ključ = v + ',' + s;
+                
+                // Ako je polje već zaposedeno, preskoči
+                if (this.plošča[v][s] !== null) {
+                    this.vrednostiPolj[ključ] = 0;
+                    continue;
+                }
+                
+                // Ako je polje zaprto (nema potencijala), preskoči
+                if (this.zaprte[v][s]) {
+                    this.vrednostiPolj[ključ] = 0;
+                    continue;
+                }
+                
+                // Izračunaj vrednost za ovo polje
+                let vrednost = 0;
+                
+                // 1. Provera moje pobede (3 u nizu)
+                const mojaVrsta = this.prebrojiDolžinoLinije(v, s, this.trenutniIgralec);
+                if (mojaVrsta >= 3) vrednost += 200; // Moja pobeda je blizu
+                else if (mojaVrsta === 2) vrednost += 50;
+                
+                // 2. Provera blokade nasprotnika
+                const nasprotnik = this.trenutniIgralec === 'o' ? 'x' : 'o';
+                const nasprotnikVrsta = this.prebrojiDolžinoLinije(v, s, nasprotnik);
+                if (nasprotnikVrsta >= 3) vrednost += 180; // Moram ga blokirati
+                else if (nasprotnikVrsta === 2) vrednost += 40;
+                
+                // 3. Centralna pozicija je bolja
+                const center = Math.floor(this.velikostPolja / 2);
+                const razdalja = Math.abs(v - center) + Math.abs(s - center);
+                vrednost += Math.max(0, 10 - razdalja);
+                
+                // 4. Simulacija 2 poteze unapred (brzo)
+                // Ako postavim komad ovdje, koliko to poboljšava moju poziciju?
+                this.plošča[v][s] = this.trenutniIgralec;
+                const ocenaKadPostenim = this.oceniPozicijo(v, s, this.trenutniIgralec);
+                
+                // Koliko to šteti nasprotniku?
+                const ocenaNasprotnika = this.oceniPozicijo(v, s, nasprotnik);
+                vrednost += (ocenaKadPostenim - ocenaNasprotnika) / 10;
+                
+                this.plošča[v][s] = null;
+                
+                this.vrednostiPolj[ključ] = vrednost;
+            }
+        }
+    }
+
+    oceniPozicijo(vrsta, stolpec, igralec) {
+        let ocena = 0;
+        const nasprotnik = igralec === 'o' ? 'x' : 'o';
+        const center = Math.floor(this.velikostPolja / 2);
+
+        const razdaljaOdCentra = Math.abs(vrsta - center) + Math.abs(stolpec - center);
+        ocena -= razdaljaOdCentra * 2;
+
+        // Oceni linijo za ta igralec
+        const mojaVrsta = this.prebrojiDolžinoLinije(vrsta, stolpec, igralec);
+        
+        // Eksponencialna penalizacija/nagrada glede na dolžino linije
+        // 4 = gotova zmaga (ne sme biti ovdje - to je že preverjeno v minimaxu)
+        // 3 = lahko pobjedim, trebam zaštitu
+        // 2 = gradim, ali nije kritično
+        // 1 = samo prazna ploča
+        switch(mojaVrsta) {
+            case 4:
+                ocena += 5000; // Gotova zmaga (ali bi trebala biti zaustavljena prije)
+                break;
+            case 3:
+                ocena += 300; // Jaka pozicija - mogu pobjeđivati
+                break;
+            case 2:
+                ocena += 50; // Gradim
+                break;
+            case 1:
+                ocena += 5;
+                break;
+        }
+
+        // Kritično je blokiranje nasprotnika
+        const nasprotnikVrsta = this.prebrojiDolžinoLinije(vrsta, stolpec, nasprotnik);
+        
+        // Blokiranje ima VEĆU vrijednost nego gradnja
+        switch(nasprotnikVrsta) {
+            case 4:
+                ocena += 4000; // Trebam zaustavi lui (kritično)
+                break;
+            case 3:
+                ocena += 400; // Trebam ga blokirati - prioritet je viši nego moja gradnja
+                break;
+            case 2:
+                ocena += 60; // Mogu ga blokirati kasnije
+                break;
+            case 1:
+                ocena += 5;
+                break;
+        }
+
+        return ocena;
+    }
+
+    prebrojiDolžinoLinije(vrsta, stolpec, igralec) {
+        const smeri = [
+            { dv: 0, ds: 1 },   // Vodoravno
+            { dv: 1, ds: 0 },   // Navpično
+            { dv: 1, ds: 1 },   // Diagonalno / 
+            { dv: 1, ds: -1 }   // Diagonalno \
         ];
 
-        let maxLength = 0;
+        let maxDolžina = 1;
 
-        for (const dir of directions) {
-            let length = 1;
-            // Išlezi u jednom smjeru
+        for (let smer of smeri) {
+            let dolžina = 1;
+            
+            // Naprej
             for (let i = 1; i < 4; i++) {
-                const r = row + dir.dr * i;
-                const c = col + dir.dc * i;
-                if (r >= 0 && r < this.boardSize && c >= 0 && c < this.boardSize && 
-                    this.board[r][c] === player && !this.blocked[r][c]) {
-                    length++;
+                const v = vrsta + smer.dv * i;
+                const s = stolpec + smer.ds * i;
+                if (v >= 0 && v < this.velikostPolja && s >= 0 && s < this.velikostPolja && 
+                    this.plošča[v][s] === igralec) {
+                    dolžina++;
                 } else break;
             }
-            // Išlezi u drugom smjeru
+
+            // Nazaj
             for (let i = 1; i < 4; i++) {
-                const r = row - dir.dr * i;
-                const c = col - dir.dc * i;
-                if (r >= 0 && r < this.boardSize && c >= 0 && c < this.boardSize && 
-                    this.board[r][c] === player && !this.blocked[r][c]) {
-                    length++;
+                const v = vrsta - smer.dv * i;
+                const s = stolpec - smer.ds * i;
+                if (v >= 0 && v < this.velikostPolja && s >= 0 && s < this.velikostPolja && 
+                    this.plošča[v][s] === igralec) {
+                    dolžina++;
                 } else break;
             }
-            maxLength = Math.max(maxLength, length);
+
+            maxDolžina = Math.max(maxDolžina, dolžina);
         }
 
-        return maxLength;
+        return maxDolžina;
     }
 
-    setAI(enabled, difficulty = 'medium', aiVsAi = false) {
-        console.log('setAI: enabled=' + enabled + ', difficulty=' + difficulty + ', aiVsAi=' + aiVsAi);
-        this.aiEnabled = enabled;
-        this.aiDifficulty = difficulty;
-        this.aiVsAi = aiVsAi;
-        this.movesCount = 0;
+    izračunajPrioriteto(vrsta, stolpec) {
+        // Hevristika za sortiranje potez (Move Ordering)
+        // Prioritetizira poteze blizu centra in poteze s zgodovino
         
-        // Naraščajoča težavnost se začne kot "easy"
-        if (difficulty === 'dynamic') {
-            this.dynamicDifficulty = true;
-            this.aiDifficulty = 'easy';
+        let prioriteta = 0;
+        const ključ = vrsta + ',' + stolpec;
+
+        // 1. Koristi predračunane vrednosti polja ako su dostupne
+        if (this.vrednostiPolj && this.vrednostiPolj[ključ] !== undefined) {
+            prioriteta += this.vrednostiPolj[ključ] * 5;
+        }
+
+        // 2. Preferenca za blizu centra
+        const center = Math.floor(this.velikostPolja / 2);
+        const razdaljaOdCentra = Math.abs(vrsta - center) + Math.abs(stolpec - center);
+        prioriteta += (10 - razdaljaOdCentra) * 10; // Bližje centu = višja prioriteta
+
+        // 3. Poteze s pozitivno povijesti (History Heuristic)
+        if (this.zgodovinaHevristike[ključ]) {
+            prioriteta += this.zgodovinaHevristike[ključ] * 20; // Poteze ki so bile dobre = višja prioriteta
+        }
+
+        // 4. Poteze ki gradijo naš položaj (Line building)
+        const lastniDolžina = this.prebrojiDolžinoLinije(vrsta, stolpec, this.trenutniIgralec);
+        prioriteta += lastniDolžina * 50; // Daljše linije = višja prioriteta
+
+        // 5. Blokiranje nasprotnikovih potez
+        const nasprotnik = this.trenutniIgralec === 'o' ? 'x' : 'o';
+        const nasprotnikDolžina = this.prebrojiDolžinoLinije(vrsta, stolpec, nasprotnik);
+        prioriteta += nasprotnikDolžina * 40; // Blokiranje = važno
+
+        return prioriteta;
+    }
+
+    nastaviAI(omogočeno, težavnost = 'srednja', aiProtiAi = false) {
+        console.log('⚙️ Inicijalizacija AI: omogočeno=' + omogočeno + ', AI vs AI=' + aiProtiAi);
+        this.racunalnikOmogočen = omogočeno;
+        this.racunalnikTežavnost = težavnost;
+        this.racunalnikProtiRacunalniku = aiProtiAi;
+        this.številoPotez = 0;
+        
+        // Postavi lookahead dubinu na osnovo težavnosti
+        if (težavnost === 'lahka') {
+            this.globinaPredgleda = 1;
+        } else if (težavnost === 'srednja') {
+            this.globinaPredgleda = 2;
+        } else if (težavnost === 'težka') {
+            this.globinaPredgleda = 3;
+        } else if (težavnost === 'dinamična') {
+            this.globinaPredgleda = 2; // Počni sa 2, može se povečati tokom igre
         }
         
-        if (enabled) {
-            if (aiVsAi) {
-                // Oba sta računalnika - 'o' je prvi, ker se igra začne z 'o'
-                this.aiPlayer = 'o';
-                console.log('AI vs AI: aiPlayer=o, currentPlayer=' + this.currentPlayer);
+        // Naraščajoča težavost se začne kot "easy"
+        if (težavnost === 'dinamična') {
+            this.dinamičnaTežavost = true;
+            this.racunalnikTežavnost = 'lahka';
+        }
+        
+        if (omogočeno) {
+            if (aiProtiAi) {
+                // Oba sta računalnika - postavi aiPlayer na 'o' samo za konzistentnost (se ne uporablja)
+                this.racunalnikIgralec = 'o';
+                console.log('🤖 AI vs AI: Oba računalnika - započinjam igru');
+                setTimeout(() => this.izvediAIPotezo(), 100);
             } else {
                 // Samo en je računalnik - 'x'
-                this.aiPlayer = 'x';
-                console.log('PvC: aiPlayer=x, currentPlayer=' + this.currentPlayer);
-            }
-            
-            if (this.currentPlayer === this.aiPlayer) {
-                const delay = this.aiVsAi ? 100 : 300;
-                console.log('Pokrećem prvi AI poteza nakon ' + delay + 'ms');
-                setTimeout(() => this.makeAIMove(), delay);
-            } else {
-                console.log('currentPlayer !== aiPlayer, čekam na igrača');
+                this.racunalnikIgralec = 'x';
+                console.log('👤 PvC: Človek (o) vs Računalnik (x)');
+                
+                if (this.trenutniIgralec === this.racunalnikIgralec) {
+                    const zamik = 300;
+                    console.log('🤖 Prvi AI poteza čez 300ms');
+                    setTimeout(() => this.izvediAIPotezo(), zamik);
+                } else {
+                    console.log('👤 Čakam na igrača...');
+                }
             }
         }
     }
 
     getRandomValidMove() {
         const validMoves = [];
-        for (let c = 0; c < this.boardSize; c++) {
-            if (this.isValidMove(0, c)) {
-                validMoves.push(c);
+        for (let s = 0; s < this.velikostPolja; s++) {
+            if (this.jeVeljavnaPoteza(0, s)) {
+                validMoves.push(s);
             }
         }
-        const col = validMoves.length > 0 ? validMoves[Math.floor(Math.random() * validMoves.length)] : -1;
-        console.log('Random valid moves: ' + validMoves.length + ', izbran: ' + col);
-        return col;
+        const stolpec = validMoves.length > 0 ? validMoves[Math.floor(Math.random() * validMoves.length)] : -1;
+        console.log('📋 Veljavnih potez: ' + validMoves.length + ', izbrana stolpec: ' + stolpec);
+        return stolpec;
+    }
+
+    getRandomValidMove2D() {
+        const validMoves = [];
+        for (let v = 0; v < this.velikostPolja; v++) {
+            for (let s = 0; s < this.velikostPolja; s++) {
+                if (this.plošča[v][s] === null && !this.zaprte[v][s]) {
+                    validMoves.push({ vrsta: v, stolpec: s });
+                }
+            }
+        }
+        if (validMoves.length > 0) {
+            const move = validMoves[Math.floor(Math.random() * validMoves.length)];
+            return move;
+        }
+        return { vrsta: -1, stolpec: -1, razlog: '' };
     }
 }
 
@@ -766,27 +1166,27 @@ let game;
 
 // Inicijalizacija
 function initGame() {
-    game = new FourInARow();
+    game = new ŠtiriVVrsto();
     // Na začetku prikaži meni
     showGameMode();
 }
 
 function showGame() {
-    console.log('showGame poklican');
+    console.log('🎮 Prikaz igre...');
     try {
         const modeSelect = document.getElementById('modeSelect');
         const difficultySelect = document.getElementById('difficultySelect');
         const gameContainer = document.getElementById('gameContainer');
-        console.log('modeSelect:', modeSelect);
-        console.log('gameContainer:', gameContainer);
+        console.log('✓ modeSelect pronađen');
+        console.log('✓ gameContainer pronađen');
         if (modeSelect) modeSelect.style.display = 'none';
         if (difficultySelect) difficultySelect.style.display = 'none';
         if (gameContainer) gameContainer.style.display = 'block';
-        console.log('Display spremenjen');
+        console.log('✓ Prikaz promenjen');
         // Osvježi prikaz ploče
-        if (game) game.renderBoard();
+        if (game) game.rišiPloščo();
     } catch(e) {
-        console.error('Napaka v showGame:', e);
+        console.error('❌ Napaka v showGame:', e);
     }
 }
 
@@ -801,29 +1201,45 @@ function backToMenu() {
 }
 
 function resetGame() {
+    // Spremi AI stanje
+    const wasAIEnabled = game.racunalnikOmogočen;
+    const wasAIDifficulty = game.racunalnikTežavnost;
+    const wasAIVsAi = game.racunalnikProtiRacunalniku;
+    
     game.reset();
+    
+    // Vrati AI stanje ako je bilo omogočeno
+    if (wasAIEnabled) {
+        game.nastaviAI(true, wasAIDifficulty, wasAIVsAi);
+    }
+    
     showGame();
 }
 
 function undoMove() {
-    game.undo();
+    // Ne dovolaj undo tokom AI igre
+    if (game.racunalnikOmogočen && game.trenutniIgralec === game.racunalnikIgralec) {
+        console.log('⛔ Nije dozvoljeno da se napravi undo dok AI razmišlja!');
+        return;
+    }
+    game.razveljavi();
 }
 
-function startAIGame(difficulty) {
+function startAIGame(težavnost) {
     game.reset();
-    game.setAI(true, difficulty);
+    game.nastaviAI(true, težavnost);
     showGame();
 }
 
 function startPvPGame() {
-    console.log('startPvPGame klican');
+    console.log('🎮 Čovek vs Čovek igra pokrenut');
     try {
         game.reset();
-        console.log('game reset');
-        game.setAI(false);
-        console.log('AI disabled');
+        console.log('✓ Igra resetirana');
+        game.nastaviAI(false);
+        console.log('✓ AI onemogočen');
         showGame();
-        console.log('showGame poklican');
+        console.log('✓ Prikaz igre');
     } catch(e) {
         console.error('Napaka v startPvPGame:', e);
     }
@@ -831,7 +1247,7 @@ function startPvPGame() {
 
 // Zaženi igro pri nalaganju
 window.addEventListener('DOMContentLoaded', function() {
-    console.log('DOMContentLoaded event');
+    console.log('✓ DOM učitan');
     initGame();
     
     // Glavni meni - izbira tipa igre
@@ -842,20 +1258,20 @@ window.addEventListener('DOMContentLoaded', function() {
     if (pvpBtn) {
         pvpBtn.addEventListener('click', () => {
             game.reset();
-            game.setAI(false);
+            game.nastaviAI(false);
             showGame();
         });
     }
     
     if (pvcBtn) {
         pvcBtn.addEventListener('click', () => {
-            showDifficultySelect(false); // Igralec vs Računalnik
+            showDifficultySelect(false);
         });
     }
     
     if (aiaiBtn) {
         aiaiBtn.addEventListener('click', () => {
-            showDifficultySelect(true); // Računalnik vs Računalnik
+            showDifficultySelect(true);
         });
     }
     
@@ -867,15 +1283,8 @@ window.addEventListener('DOMContentLoaded', function() {
         btn.addEventListener('click', () => {
             game.reset();
             
-            if (index === 0) { // Easy
-                game.setAI(true, 'easy', pvcAiVsAi);
-            } else if (index === 1) { // Medium
-                game.setAI(true, 'medium', pvcAiVsAi);
-            } else if (index === 2) { // Hard
-                game.setAI(true, 'hard', pvcAiVsAi);
-            } else if (index === 3) { // Dynamic
-                game.setAI(true, 'dynamic', pvcAiVsAi);
-            }
+            // Svi dugmići sada koriste hardest algoritam
+            game.nastaviAI(true, 'težka', pvcAiVsAi);
             
             showGame();
         });
@@ -897,13 +1306,39 @@ window.addEventListener('DOMContentLoaded', function() {
     const menuBtn = document.getElementById('menuBtn');
     if (menuBtn) menuBtn.addEventListener('click', backToMenu);
     
-    console.log('Vsi event listenerjí nastavljeni');
+    console.log('✓ Svi event listeneri postavljeni');
+    
+    // Dark mode toggle
+    const darkModeBtn = document.getElementById('darkModeBtn');
+    if (darkModeBtn) {
+        darkModeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+            
+            // Promijeni emoji - prikazuje trenutno stanje (obrnuto)
+            if (document.body.classList.contains('dark-mode')) {
+                darkModeBtn.textContent = '☀️';
+            } else {
+                darkModeBtn.textContent = '🌙';
+            }
+        });
+        
+        // Preveri shranjeno preference
+        if (localStorage.getItem('darkMode') === 'true') {
+            document.body.classList.add('dark-mode');
+            darkModeBtn.textContent = '☀️';
+        } else {
+            darkModeBtn.textContent = '🌙';
+        }
+    }
 });
 
-let pvcAiVsAi = false; // Spremenljivka za tiste ali je AI vs AI
+let pvcAiVsAi = false;
 
 function showDifficultySelect(aiVsAi) {
     pvcAiVsAi = aiVsAi;
-    document.getElementById('modeSelect').style.display = 'none';
-    document.getElementById('difficultySelect').style.display = 'block';
+    // Umesto da prikazuješ izbor, direktno pokreni igru sa hardest algoritmom
+    game.reset();
+    game.nastaviAI(true, 'težka', aiVsAi);
+    showGame();
 }

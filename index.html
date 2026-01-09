@@ -4,10 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>4 v Vrsto - Razširljiva Igra</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2.0">
 </head>
 <body>
     <div class="container">
+        <button id="darkModeBtn">☀️</button>
+        
         <h1>4 v Vrsto</h1>
         
         <div class="game-mode-select" id="modeSelect">
@@ -18,12 +20,7 @@
         </div>
 
         <div class="difficulty-select" id="difficultySelect" style="display:none;">
-            <p>Izberi težavnost:</p>
-            <button class="mode-btn">🟢 Lahka</button>
-            <button class="mode-btn">🟡 Srednja</button>
-            <button class="mode-btn">🔴 Težka</button>
-            <button class="mode-btn">⚡ Naraščajoča</button>
-            <button class="mode-btn back-btn">← Nazaj</button>
+            <!-- Izbor težavnosti je uklonjen - koristi se samo hardest algoritmam -->
         </div>
 
         <div class="game-container" id="gameContainer" style="display:none;">
@@ -33,7 +30,6 @@
                 </div>
                 <div class="stats">
                     <span>Polje: <span id="boardSize">5x5</span></span>
-                    <span id="difficultyDisplay" style="margin-left: 20px;"></span>
                 </div>
             </div>
             
@@ -49,7 +45,7 @@
                 </div>
             </div>
             
-            <div class="game-board" id="gameBoard"></div>
+            <div id="gameBoard"></div>
             
             <div class="ai-comment" id="aiComment" style="display:none;"></div>
             
@@ -61,8 +57,12 @@
             
             <div id="message" class="message"></div>
         </div>
+
+        <footer class="footer">
+            <a href="https://github.com/hamsteruf/4-v-vrsto" target="_blank">GitHub</a>
+        </footer>
     </div>
 
-    <script src="game.js"></script>
+    <script src="game.js?v=2.0"></script>
 </body>
 </html>
